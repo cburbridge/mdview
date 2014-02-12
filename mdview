@@ -1,0 +1,84 @@
+#!/usr/bin/python
+
+import watchdog
+import subprocess
+import time
+from watchdog.observers import Observer
+from watchdog.events import LoggingEventHandler, FileSystemEventHandler
+import os
+import sys
+import gtk,  glib
+import webkit 
+
+class MDViewer(FileSystemEventHandler, gtk.Window):
+    def __init__(self, filename):
+        super(gtk.Window, self).__init__()
+        # gtk.WINDOW_TOPLEVEL)
+        self._last_pos = 0
+        self.set_title(filename)
+        self.set_size_request(600,720)
+        self.file_name = os.path.abspath(filename)
+        self.observer = Observer()
+        self.observer.schedule(self,
+                               os.path.dirname(self.file_name), 
+                               recursive=False)
+        
+        self.sw = gtk.ScrolledWindow()
+        self.view = webkit.WebView()
+        self.sw.add(self.view)
+        self.add(self.sw)
+        
+        self.update()
+        self.connect("destroy", self.on_quit)
+
+        
+    def start(self):
+        self.observer.start()
+        self.show_all()
+        
+        
+    def load_file(self):
+        f = open(self.file_name, "r")
+        self.content = f.read()
+        f.close()
+    
+    def update(self):
+        md = self.create_md()
+        html = "<html><head></head><body>{}</body></html>".format(md)
+        glib.idle_add(self.load_html, html)
+        
+    def on_loaded_html(self):
+        self.sw.get_vadjustment().set_value(self._last_pos)
+        
+    def load_html(self, html):
+        pos = self.sw.get_vadjustment()
+        self._last_pos = pos.get_value()
+        self.view.load_html_string(html, "")
+        self.sw.get_vadjustment().set_value(self._last_pos)
+        glib.idle_add(self.on_loaded_html)
+
+        
+    def on_modified(self, event):
+        if event.src_path == self.file_name:
+            self.update()
+
+    def on_quit(self, widget=None):
+        self.observer.stop()
+        self.observer.join()
+        gtk.mainquit()
+    
+    def create_md(self):
+        md = subprocess.check_output(["markdown",self.file_name])
+        return md
+    
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print "Need the file as an argument"
+        sys.exit(1)
+    if not os.path.isfile(sys.argv[1]):
+        print "Must supply file."
+        sys.exit(1)
+    s = MDViewer(sys.argv[1])
+    
+    s.start()
+    gtk.main()
