@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import watchdog
 import subprocess
@@ -7,12 +7,16 @@ from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 import os
 import sys
-import gtk,  glib
-import webkit 
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('WebKit', '3.0')
+from gi.repository import Gtk
+from gi.repository import GLib
+from gi.repository import WebKit
 
-class MDViewer(FileSystemEventHandler, gtk.Window):
+class MDViewer(FileSystemEventHandler, Gtk.Window):
     def __init__(self, filename):
-        super(gtk.Window, self).__init__()
+        super(Gtk.Window, self).__init__()
         # gtk.WINDOW_TOPLEVEL)
         self._last_pos = 0
         self.set_title(filename)
@@ -23,14 +27,13 @@ class MDViewer(FileSystemEventHandler, gtk.Window):
                                os.path.dirname(self.file_name), 
                                recursive=False)
         
-        self.sw = gtk.ScrolledWindow()
-        self.view = webkit.WebView()
+        self.sw = Gtk.ScrolledWindow()
+        self.view = WebKit.WebView()
         self.sw.add(self.view)
         self.add(self.sw)
         
         self.update()
-        self.connect("destroy", self.on_quit)
-
+        self.connect("destroy", Gtk.main_quit)
         
     def start(self):
         self.observer.start()
@@ -44,8 +47,13 @@ class MDViewer(FileSystemEventHandler, gtk.Window):
     
     def update(self):
         md = self.create_md()
-        html = "<html><head></head><body>{}</body></html>".format(md)
-        glib.idle_add(self.load_html, html)
+        html = """<!DOCTYPE html>"""
+        html += """<html lang="en"><head>"""
+        html += """<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>"""
+        html += """<title>Your Markdown Document</title></head>"""
+        html += """<body>{}</body></html>""".format(md)
+        #self.dump_to_file(html)
+        GLib.idle_add(self.load_html, html)
         
     def on_loaded_html(self):
         self.sw.get_vadjustment().set_value(self._last_pos)
@@ -55,7 +63,7 @@ class MDViewer(FileSystemEventHandler, gtk.Window):
         self._last_pos = pos.get_value()
         self.view.load_html_string(html, "")
         self.sw.get_vadjustment().set_value(self._last_pos)
-        glib.idle_add(self.on_loaded_html)
+        GLib.idle_add(self.on_loaded_html)
 
         
     def on_modified(self, event):
@@ -65,20 +73,25 @@ class MDViewer(FileSystemEventHandler, gtk.Window):
     def on_quit(self, widget=None):
         self.observer.stop()
         self.observer.join()
-        gtk.mainquit()
+        Gtk.mainquit()
     
     def create_md(self):
         md = subprocess.check_output(["markdown",self.file_name])
-        return md
+        decoded = md.decode(encoding="utf-8", errors="strict")
+        return decoded
+
+    def dump_to_file(self, text):
+        with open('dump.html','w') as f:
+            f.write(text)
     
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print "Need the file as an argument"
+        print("Need the file as an argument")
         sys.exit(1)
     if not os.path.isfile(sys.argv[1]):
-        print "Must supply file."
+        print("Must supply file.")
         sys.exit(1)
     s = MDViewer(sys.argv[1])
     
     s.start()
-    gtk.main()
+    Gtk.main()
